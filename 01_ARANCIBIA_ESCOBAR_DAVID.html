@@ -1,0 +1,289 @@
+<html>
+
+<head>
+    <title>Three.js luz y sombras</title>
+    <style>
+        body {
+            overflow: hidden;
+            margin: 0;
+        }
+        
+        .ui {
+            position: absolute;
+        }
+    </style>
+</head>
+
+<body>
+    <h1 style="width:100%;height:50px;text-align: center; color:white;" class="ui">Observe cuidadosamente</h1>
+    <script src="three.min.js"></script>
+    <script src="cannon.js"></script>
+    <script>
+        //Este trabajo utiliza la libreria cannon.js para realizar las colisiones entre esferas, las colisiones entre esferas
+        //siguen leyes de la fisica y pierden velocidad al golpearse ademas de cambiar sus trayectorias, entre otras características
+        //cannon.js no soporta planos, por lo que se manejan aparte
+        //cannon.js es una libreria de fisica para objetos 3d https://github.com/schteppe/cannon.js
+        //se crean 8 esferas en posiciones aleatorias, se pinta de rojo 4 de ellas por un momento, luego se vuelven
+        //a pintar de amarillo y se mueven por determinado tiempo despues del cual se detienen para que el usuario
+        //decida cuales se pintaron
+        //-------------------------------------------------------------------------------------------------
+        class VPosition3d { //objeto vector 3d
+            constructor(x, y, z) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+            }
+            randomizePosition() { //metodo que randomiza los parametos x,y,z
+                this.x = Math.random() * (50 - (-50)) + (-50);
+                this.y = Math.random() * (50 - (-50)) + (-50);
+                this.z = Math.random() * (50 - (-50)) + (-50);
+            }
+        }
+        //aqui se encuentra la inicializacion de varias variables
+        var txt = document.getElementsByClassName("ui");
+        var selectedObject;
+        var sphradius = 6;
+        var projector = new THREE.Projector();
+        var boxes = [];
+        var Bodys = [];
+        var spheres = [];
+        var correct = [];
+        var answers = [];
+        var flgs = [1, 1, 1, 1, 1, 1, 1, 1];
+        var scene = new THREE.Scene();
+        var rand = new VPosition3d(0, 0, 0);
+        var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        var complete = 0;
+
+        var renderer = new THREE.WebGLRenderer();
+        renderer.setClearColor(0xEEEEEE);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMapEnabled = true;
+        document.body.appendChild(renderer.domElement);
+        var timeStep = 1 / 60
+        var axes = new THREE.AxisHelper(20);
+        scene.add(axes);
+
+        //Se definen geometrias y materiales
+        var planeGeometry = new THREE.PlaneGeometry(200, 200, 1, 1);
+        var boxGeometry = new THREE.CubeGeometry(50, 50, 50);
+        var planeMaterial = new THREE.MeshLambertMaterial({
+            color: 0xcccccc,
+            //transparent: true,
+            opacity: .3
+
+        });
+
+        var sphereGeometry = new THREE.SphereGeometry(sphradius, 5, 20);
+        var sphereMaterial = new THREE.MeshLambertMaterial({
+            color: 0x21e7ce
+        });
+        var redMaterial = new THREE.MeshLambertMaterial({
+            color: 0xe32424
+        });
+        var yellowMaterial = new THREE.MeshLambertMaterial({
+            color: 0xe3d124
+        });
+        //se inicializan las esferas
+        for (i = 0; i < 8; i++) {
+            spheres[i] = new THREE.Mesh(sphereGeometry, yellowMaterial);
+            rand.randomizePosition();
+            spheres[i].position.x = rand.x;
+            spheres[i].position.y = rand.y;
+            spheres[i].position.z = rand.z;
+            spheres[i].castShadow = true;
+            scene.add(spheres[i]);
+        }
+        //se inicializan los planos
+        var planes = [];
+        for (i = 0; i < 6; i++) {
+            planes[i] = new THREE.Mesh(planeGeometry, planeMaterial);
+            planes[i].receiveShadow = true;
+        }
+        planes[0].rotation.x = -0.5 * Math.PI;
+        planes[0].position = new THREE.Vector3(0, -70, 0);
+        planes[1].position = new THREE.Vector3(0, 0, -100);
+        planes[2].rotation.y = 0.5 * Math.PI;
+        planes[2].position = new THREE.Vector3(-70, 0, 0);
+        planes[3].rotation.y = -0.5 * Math.PI;
+        planes[3].position = new THREE.Vector3(70, 0, 0);
+        planes[4].rotation.y = 1 * Math.PI;
+        planes[4].position = new THREE.Vector3(0, 0, 100);
+        planes[5].rotation.x = 0.5 * Math.PI;
+        planes[5].position = new THREE.Vector3(0, 70, 0);
+        for (i = 0; i < 6; i++) {
+            scene.add(planes[i]);
+        }
+        //se crea una lista de vectores 3d al azar
+        var rands = [];
+        for (i = 0; i < 8; i++) {
+            rands[i] = new VPosition3d();
+            rands[i].randomizePosition();
+        }
+        //se inicializan los cuerpos de Cannon.js
+        function initCannon() {
+            //se crea el mundo de cannon
+            world = new CANNON.World();
+            world.gravity.set(0, 0, 0);
+            world.broadphase = new CANNON.NaiveBroadphase();
+            world.solver.iterations = 100;
+            //se crean las esferas y a cada una se le da una posicion y velocidad
+            shape = new CANNON.Sphere(3);
+            mass = .1;
+            j = 0;
+            k = 0;
+            while (j < 8) {
+                shape = new CANNON.Sphere(sphradius);
+                Bodys[j] = new CANNON.Body({
+                    mass: 1
+                });
+                Bodys[j].addShape(shape);
+                Bodys[j].angularDamping = 0.5;
+                rand.randomizePosition();
+                Bodys[j].position.set(rand.x, rand.y, rand.z);
+                //Bodys[j].quaternion.set(0, 0, 0);
+                Bodys[j].velocity.set(1, 1, 1)
+                world.addBody(Bodys[j]);
+                j++;
+            }
+        }
+
+        var spotLight = new THREE.SpotLight(0xffffff);
+
+        spotLight.position.set(0, 70, 0);
+        spotLight.target.position = planes[0].position;
+        spotLight.shadowCameraNear = spotLight.shadowCameraNear / 2;
+        spotLight.castShadow = true;
+        scene.add(spotLight);
+        // Esta esfera muestra gráficamente la fuente de luz
+        sphereGeometry = new THREE.SphereGeometry(1, 20, 20);
+        sphereMaterial = new THREE.MeshBasicMaterial();
+        sphereMaterial.color = spotLight.color;
+
+        var light = new THREE.HemisphereLight(0xffffbb, 0x080820, 1);
+        scene.add(light);
+
+
+
+        var spotLightMarker = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        spotLightMarker.position = spotLight.position;
+        scene.add(spotLightMarker);
+
+        camera.position.x = -215;
+        camera.position.y = 0;
+        camera.position.z = 0;
+        camera.lookAt(scene.position);
+        t = 0
+        done = 0
+            //var controls = new THREE.OrbitControls(camera, renderer.domElement);
+        var randoms = [0, 1, 2, 3, 4, 5, 6, 7];
+        initCannon();
+        ii = 0
+            //aqui se ponen las esferas en las posiciones de sus cuerpos
+        spheres.forEach(element => {
+            element.position.z = Bodys[ii].position.z;
+            element.position.y = Bodys[ii].position.y;
+            element.position.x = Bodys[ii].position.x;
+            ii++;
+        });
+        document.onmousedown = function(event) { //aqui se maneja el click, se genera un raycast que obtiene el objeto en la posicion del mouse
+            //se utilizó el ejemplo de three.js cookbook como guía
+            if (complete === 1) {
+                var mouse_x = (event.clientX / window.innerWidth) * 2 - 1;
+                var mouse_y = -(event.clientY / window.innerHeight) * 2 + 1;
+                var vector = new THREE.Vector3(mouse_x, mouse_y, 0.5);
+                projector.unprojectVector(vector, camera);
+                for (n = 0; n < 5; n++) {
+                    var raycaster = new THREE.Raycaster(camera.position, vector.sub(camera.position).normalize());
+                    var intersects = raycaster.intersectObjects(spheres);
+                    if (intersects.length > 0) {
+                        selectedObject = intersects[0].object;
+                        selectedObject.material = redMaterial;
+                        var isSameSphere = (element) => element === selectedObject;
+                        answers.push(spheres.findIndex(isSameSphere));
+                    }
+                }
+            }
+        };
+
+        function checkAnswer() { //compara la respuesta del usuario con la correcta
+            cnt = 0;
+            correct.sort();
+            answers.sort();
+            correct.forEach(a => {
+                answers.forEach(b => {
+                    if (a === b) {
+                        cnt++;
+                    }
+                });
+            });
+            return cnt;
+        }
+        //se van actualizando todos los elementos durante el corrimiento del programas
+        (function animate() {
+            requestAnimationFrame(animate);
+            t = t + 1;
+            ii = 0;
+            i = 0;
+            if (t % 100 == 0) {
+                flgs = [1, 1, 1, 1, 1, 1, 1, 1];
+            }
+            //aqui se pintan las esferas de rojo
+            if (t > 75 && done == 0) {
+                for (j = 0; j < 4; j++) {
+                    rnd = Math.round(Math.random() * (7 - j - (0)) + (0));
+                    it = randoms[rnd];
+                    correct.push(it);
+                    randoms.splice(rnd, 1);
+                    spheres[it].material = redMaterial;
+                }
+                done = 1;
+            }
+            //se asignan velocidades aleatorias a los cuerpos
+            if (t == 150) {
+                Bodys.forEach(element => {
+                    element.velocity.set(rands[i].x * .5, rands[i].y * .5, rands[i].z * .5)
+                    i++;
+                });
+            }
+            //en este intervalo de tiempo se mueven las esferas, detectando colisiones entre si
+            if (t > 150 && t < 800) {
+                spheres.forEach(element => {
+                    if (flgs[ii] == 1) {
+                        if (spheres[ii].position.x < -65 || spheres[ii].position.x > 65) {
+                            Bodys[ii].velocity.x *= -1;
+                            flgs[ii] = 0;
+                        }
+                        if (spheres[ii].position.y < -65 || spheres[ii].position.y > 65) {
+                            Bodys[ii].velocity.y *= -1;
+                            flgs[ii] = 0;
+                        }
+                        if (spheres[ii].position.z < -95 || spheres[ii].position.z > 95) {
+                            Bodys[ii].velocity.z *= -1;
+                            flgs[ii] = 0;
+                        }
+                    }
+                    //se actualiza la posicion de las esferas para que sea el mismo que el de sus cuerpos fisicos
+                    element.material = yellowMaterial;
+                    element.position.z = Bodys[ii].position.z;
+                    element.position.y = Bodys[ii].position.y;
+                    element.position.x = Bodys[ii].position.x;
+                    ii++;
+                });
+            }
+            if (t > 800) {
+                txt[0].textContent = "Seleccione las esferas que se pintaron en rojo";
+                complete = 1;
+                if (answers.length > 3) { //se indica n/4 esferas correctas
+                    txt[0].textContent = checkAnswer().toString() + "/4 correctas!";
+                    complete = 0;
+                }
+            }
+            world.step(timeStep);
+            renderer.render(scene, camera);
+            //controls.update();
+        })();
+    </script>
+</body>
+
+</html>
